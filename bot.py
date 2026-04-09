@@ -1,5 +1,8 @@
 import logging
 import asyncio
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
+import os
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from config import config
@@ -9,6 +12,20 @@ import executor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b'Jarvis is alive')
+    def log_message(self, *args):
+        pass
+
+def start_health_server():
+    port = int(os.environ.get('PORT', 8080))
+    server = HTTPServer(('0.0.0.0', port), HealthHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.message.from_user.id)
@@ -39,6 +56,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     config.validate()
+    start_health_server()
     app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     logger.info("Jarvis is online.")
