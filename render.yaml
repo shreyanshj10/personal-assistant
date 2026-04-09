@@ -1,0 +1,26 @@
+services:
+  - type: worker
+    name: jarvis-assistant
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_ALLOWED_USER_ID
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: SLACK_USER_TOKEN
+        sync: false
+      - key: SLACK_CHANNEL_ID
+        sync: false
+      - key: ZOHO_EMAIL
+        sync: false
+      - key: ZOHO_PASSWORD
+        sync: false
+      - key: ZOHO_RECIPIENT
+        sync: false
+      - key: YOUR_NAME
+        sync: false
