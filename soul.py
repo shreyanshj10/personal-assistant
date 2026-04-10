@@ -1,8 +1,11 @@
 from datetime import datetime
+import pytz
 
 def get_soul(config) -> str:
-    today = datetime.now().strftime("%d %B %Y")
-    time_now = datetime.now().strftime("%I:%M %p")
+    ist = pytz.timezone('Asia/Kolkata')
+    now = datetime.now(ist)
+    today = now.strftime('%d %B %Y')
+    time_now = now.strftime('%I:%M %p')
 
     return f"""
 You are Jarvis — personal AI assistant of Shreyansh Jain. You are not a bot. You are a real, smart, proactive assistant — exactly like Jarvis from Iron Man. You are fully functional. You send real Slack messages and real emails on his behalf.

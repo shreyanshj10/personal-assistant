@@ -3,6 +3,7 @@ from memory import memory
 from actions.eod_action import eod_action
 from actions.slack_action import slack_action
 from actions.email_action import email_action
+from services.email_service import email_service
 from config import config
 import brain
 
@@ -70,7 +71,7 @@ async def execute(decision: dict, update: Update):
             memory.log_action("✅ Slack message sent successfully")
             memory.update_session("step", "awaiting_email_choice")
             await update.message.reply_text("✅ Slack message sent!")
-            await update.message.reply_text("*Send email now or skip?*\n1. Send now\n2. Skip", parse_mode="Markdown")
+            await update.message.reply_text("*What about the email?*\n1. Send now\n2. Schedule for later\n3. Skip", parse_mode="Markdown")
         except Exception as e:
             await update.message.reply_text(f"❌ Slack failed: {str(e)}\nTry again?")
 
@@ -90,6 +91,40 @@ async def execute(decision: dict, update: Update):
             await update.message.reply_text("🎉 All done! EOD delivered successfully.")
         except Exception as e:
             await update.message.reply_text(f"❌ Email failed: {str(e)}")
+
+    elif action == "email_schedule":
+        memory.update_session("step", "awaiting_email_time")
+        await update.message.reply_text("What time should I send the email? (e.g. 7:00 PM)")
+
+    elif action == "email_time":
+        time_str = action_data.get("time_str", "")
+        email_body = memory.get_session_data("email")
+        email_subject = memory.get_session_data("email_subject")
+        extra = memory.get_session_data("extra_recipients") or []
+
+        try:
+            from utils.scheduler import parse_time_to_unix
+            unix_ts = parse_time_to_unix(time_str)
+
+            from datetime import datetime
+            import pytz
+            ist = pytz.timezone('Asia/Kolkata')
+            scheduled_dt = datetime.fromtimestamp(unix_ts, tz=ist)
+            time_formatted = scheduled_dt.strftime('%I:%M %p')
+
+            email_service.schedule_email(
+                body=email_body,
+                subject=email_subject,
+                unix_timestamp=unix_ts,
+                extra_recipients=extra
+            )
+
+            memory.log_action(f"✅ Email scheduled for {time_formatted} IST")
+            memory.end_session()
+            await update.message.reply_text(f"✅ Email scheduled for {time_formatted} IST! All done 🎉")
+
+        except Exception as e:
+            await update.message.reply_text(f"❌ Could not schedule email: {str(e)}\nTry again with format like '7:00 PM'")
 
     elif action == "skip_email":
         memory.log_action("⏭️ Email skipped")
@@ -125,7 +160,8 @@ async def _reask_current_step(update: Update, step: str):
         "awaiting_confirmation": "Looks good? Reply *yes*, *no*, or tell me what to change.",
         "awaiting_slack_choice": "*When should I post to Slack?*\n1. Send now\n2. Schedule for later",
         "awaiting_slack_time": "What time should I post to Slack? (e.g. 6:30 PM)",
-        "awaiting_email_choice": "*Send email now or skip?*\n1. Send now\n2. Skip",
+        "awaiting_email_choice": "*What about the email?*\n1. Send now\n2. Schedule for later\n3. Skip",
+        "awaiting_email_time": "What time should I send the email? (e.g. 7:00 PM)",
     }
     if step in prompts:
         await update.message.reply_text(prompts[step], parse_mode="Markdown")

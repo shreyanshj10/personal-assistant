@@ -29,9 +29,9 @@ The user sent: "{user_message}"
 Based on everything above, decide what to do. Return ONLY a valid JSON object:
 
 {{
-    "intent": "one of: new_eod | edit_eod | confirm_yes | confirm_no | slack_now | slack_schedule | slack_time | email_now | email_skip | add_recipient | general_chat | cancel",
+    "intent": "one of: new_eod | edit_eod | confirm_yes | confirm_no | slack_now | slack_schedule | slack_time | email_now | email_schedule | email_time | email_skip | add_recipient | general_chat | cancel",
     "jarvis_response": "what Jarvis says back to the user — conversational, in character",
-    "action": "one of: format_eod | confirm_yes | send_slack_now | schedule_slack | send_email_now | skip_email | add_recipient | reply_only | cancel_session",
+    "action": "one of: format_eod | confirm_yes | send_slack_now | schedule_slack | send_email_now | email_schedule | email_time | skip_email | add_recipient | reply_only | cancel_session",
     "action_data": {{}}
 }}
 
@@ -44,7 +44,9 @@ Based on everything above, decide what to do. Return ONLY a valid JSON object:
 - "slack_schedule": user wants to schedule Slack (2, schedule, later) — only during slack choice step
 - "slack_time": user is providing a time for Slack scheduling (e.g. "6:30 PM", "7pm", "18:00")
 - "email_now": user wants to send email now (1, now, send now) — only during email choice step
-- "email_skip": user wants to skip email (2, skip, no) — only during email choice step
+- "email_schedule": user wants to schedule email for later (2, schedule, later) — only during email choice step
+- "email_time": user is providing a time for email scheduling (e.g. "7:00 PM", "8pm")
+- "email_skip": user wants to skip email (3, skip, no) — only during email choice step
 - "add_recipient": user wants to add an email recipient for this send
 - "cancel": user wants to cancel everything
 - "general_chat": anything else — questions, requests, general conversation
@@ -53,6 +55,7 @@ Based on everything above, decide what to do. Return ONLY a valid JSON object:
 - For format_eod: {{"raw_update": "the raw EOD text after EOD:"}}
 - For edit_eod: {{"instruction": "what to change"}}
 - For schedule_slack: {{"time_str": "the time user mentioned"}}
+- For email_time: {{"time_str": "the time user mentioned"}}
 - For add_recipient: {{"email": "extracted email address"}}
 - For reply_only: {{}} (just respond conversationally)
 - For cancel_session: {{}}
@@ -63,7 +66,9 @@ Based on everything above, decide what to do. Return ONLY a valid JSON object:
 - If step is "awaiting_slack_choice" and user says 2/schedule/later → intent "slack_schedule", action "schedule_slack"
 - If step is "awaiting_slack_time" and user provides a time → intent "slack_time", action "send_slack_scheduled"
 - If step is "awaiting_email_choice" and user says 1/now/send/send now → intent "email_now", action "send_email_now"
-- If step is "awaiting_email_choice" and user says 2/skip/no → intent "email_skip", action "skip_email"
+- If step is "awaiting_email_choice" and user says 2/schedule/later → intent "email_schedule", action "email_schedule"
+- If step is "awaiting_email_choice" and user says 3/skip/no → intent "email_skip", action "skip_email"
+- If step is "awaiting_email_time" and user provides a time → intent "email_time", action "email_time"
 - These rules OVERRIDE everything else when a session is active. NEVER skip steps.
 
 ## CRITICAL: jarvis_response Rules
@@ -74,6 +79,8 @@ Set jarvis_response to EMPTY STRING "" for these intents (executor handles ALL m
 - slack_now (executor sends slack + asks email)
 - slack_schedule (executor asks for time)
 - email_now (executor confirms done)
+- email_schedule (executor asks for time)
+- email_time (executor schedules and confirms)
 - email_skip (executor confirms done)
 
 ONLY set jarvis_response for:
@@ -118,7 +125,10 @@ ONLY set jarvis_response for:
 async def format_eod(raw_update: str) -> dict:
     """Format raw EOD into Slack + Email. Returns dict with slack, email, email_subject."""
     from datetime import datetime
-    today = datetime.now().strftime("%d %B %Y")
+    import pytz
+    ist = pytz.timezone('Asia/Kolkata')
+    now = datetime.now(ist)
+    today = now.strftime('%d %B %Y')
     soul = get_soul(config)
 
     prompt = f"""
@@ -163,7 +173,10 @@ Email rules:
 async def reformat_eod(original_raw: str, instruction: str, current_slack: str = "", current_email: str = "") -> dict:
     """Re-format EOD after user requests a change."""
     from datetime import datetime
-    today = datetime.now().strftime("%d %B %Y")
+    import pytz
+    ist = pytz.timezone('Asia/Kolkata')
+    now = datetime.now(ist)
+    today = now.strftime('%d %B %Y')
     soul = get_soul(config)
 
     prompt = f"""

@@ -15,9 +15,15 @@ logger = logging.getLogger(__name__)
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b'Jarvis is alive')
+        if self.path in ['/', '/health']:
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(b'Jarvis is alive')
+        else:
+            self.send_response(404)
+            self.end_headers()
+
     def log_message(self, *args):
         pass
 
