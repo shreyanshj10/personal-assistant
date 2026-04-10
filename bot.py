@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 import os
@@ -12,6 +13,12 @@ import executor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+def extract_time_from_message(text: str) -> str:
+    """Extract time from message using regex. Returns time string or None."""
+    pattern = r'\b(\d{1,2}:\d{2}\s*[ap]m|\d{1,2}\s*[ap]m|\d{2}:\d{2})\b'
+    match = re.search(pattern, text.strip(), re.IGNORECASE)
+    return match.group(0) if match else None
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -58,6 +65,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Show typing indicator
     await update.message.chat.send_action("typing")
+
+    # Direct time detection for scheduling steps — bypasses brain entirely
+    current_step = memory.get_session_data("step")
+    if current_step in ["awaiting_slack_time", "awaiting_email_time"]:
+        time_str = extract_time_from_message(text)
+        if time_str:
+            if current_step == "awaiting_slack_time":
+                decision = {
+                    "intent": "slack_time",
+                    "jarvis_response": "",
+                    "action": "send_slack_scheduled",
+                    "action_data": {"time_str": time_str}
+                }
+            else:
+                decision = {
+                    "intent": "email_time",
+                    "jarvis_response": "",
+                    "action": "email_time",
+                    "action_data": {"time_str": time_str}
+                }
+            await executor.execute(decision, update)
+            return
 
     # Brain decides what to do
     decision = await brain.think(text)

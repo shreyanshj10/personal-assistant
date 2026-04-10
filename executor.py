@@ -77,8 +77,25 @@ async def execute(decision: dict, update: Update):
 
     elif action == "schedule_slack":
         time_str = action_data.get("time_str", "")
-        await update.message.reply_text(f"What time should I post to Slack? (e.g. 6:30 PM)")
+        await update.message.reply_text("What time should I post to Slack? (e.g. 6:30 PM)")
         memory.update_session("step", "awaiting_slack_time")
+
+    elif action == "send_slack_scheduled":
+        time_str = action_data.get("time_str", "")
+        slack_text = memory.get_session_data("slack")
+        try:
+            unix_ts = await slack_action.schedule(slack_text, time_str)
+            from datetime import datetime
+            import pytz
+            ist = pytz.timezone('Asia/Kolkata')
+            scheduled_dt = datetime.fromtimestamp(unix_ts, tz=ist)
+            time_formatted = scheduled_dt.strftime('%I:%M %p')
+            memory.log_action(f"✅ Slack scheduled for {time_formatted} IST")
+            memory.update_session("step", "awaiting_email_choice")
+            await update.message.reply_text(f"✅ Slack scheduled for {time_formatted} IST!")
+            await update.message.reply_text("*What about the email?*\n1. Send now\n2. Schedule for later\n3. Skip", parse_mode="Markdown")
+        except Exception as e:
+            await update.message.reply_text(f"❌ Could not schedule Slack: {str(e)}\nTry again with format like '6:30 PM'")
 
     elif action == "send_email_now":
         email_body = memory.get_session_data("email")
