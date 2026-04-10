@@ -24,6 +24,15 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
+    def do_HEAD(self):
+        if self.path in ['/', '/health']:
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/plain')
+            self.end_headers()
+        else:
+            self.send_response(404)
+            self.end_headers()
+
     def log_message(self, *args):
         pass
 
