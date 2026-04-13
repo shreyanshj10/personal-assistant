@@ -38,30 +38,41 @@ class EmailService:
             raise ValueError("Scheduled time is in the past")
 
         def send_and_notify():
-            try:
-                import smtplib, ssl
-                from email.mime.text import MIMEText
-                from email.mime.multipart import MIMEMultipart
-                from config import config as cfg
+            import time as _time
 
-                all_recipients = cfg.ZOHO_RECIPIENTS + extra_recipients
-                msg = MIMEMultipart("alternative")
-                msg["Subject"] = subject
-                msg["From"] = f"{cfg.YOUR_NAME} <{cfg.ZOHO_EMAIL}>"
-                msg["To"] = ", ".join(all_recipients)
-                html_body = body.replace("\n", "<br>")
-                msg.attach(MIMEText(html_body, "html"))
+            max_retries = 3
+            last_error = None
 
-                context = ssl.create_default_context()
-                with smtplib.SMTP_SSL("smtp.zoho.in", 465, context=context) as server:
-                    server.login(cfg.ZOHO_EMAIL, cfg.ZOHO_PASSWORD)
-                    server.sendmail(cfg.ZOHO_EMAIL, all_recipients, msg.as_string())
+            for attempt in range(max_retries):
+                try:
+                    import smtplib, ssl
+                    from email.mime.text import MIMEText
+                    from email.mime.multipart import MIMEMultipart
+                    from config import config as cfg
 
-                if notify_callback:
-                    notify_callback()
-            except Exception as e:
-                if error_callback:
-                    error_callback(str(e))
+                    all_recipients = cfg.ZOHO_RECIPIENTS + extra_recipients
+                    msg = MIMEMultipart("alternative")
+                    msg["Subject"] = subject
+                    msg["From"] = f"{cfg.YOUR_NAME} <{cfg.ZOHO_EMAIL}>"
+                    msg["To"] = ", ".join(all_recipients)
+                    html_body = body.replace("\n", "<br>")
+                    msg.attach(MIMEText(html_body, "html"))
+
+                    context = ssl.create_default_context()
+                    with smtplib.SMTP_SSL("smtp.zoho.in", 465, context=context, timeout=30) as server:
+                        server.login(cfg.ZOHO_EMAIL, cfg.ZOHO_PASSWORD)
+                        server.sendmail(cfg.ZOHO_EMAIL, all_recipients, msg.as_string())
+
+                    if notify_callback:
+                        notify_callback()
+                    return  # success, stop retrying
+                except Exception as e:
+                    last_error = e
+                    if attempt < max_retries - 1:
+                        _time.sleep(5)  # wait 5s before retry
+
+            if error_callback:
+                error_callback(str(last_error))
 
         timer = threading.Timer(delay, send_and_notify)
         timer.daemon = True
