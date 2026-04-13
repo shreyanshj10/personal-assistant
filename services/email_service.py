@@ -10,7 +10,7 @@ class EmailService:
         self._scheduled_timers = []
 
     async def send_email(self, body: str, subject: str, extra_recipients: list = []):
-        all_recipients = [config.ZOHO_RECIPIENT] + extra_recipients
+        all_recipients = config.ZOHO_RECIPIENTS + extra_recipients
 
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
@@ -44,7 +44,7 @@ class EmailService:
             from email.mime.multipart import MIMEMultipart
             from config import config as cfg
 
-            all_recipients = [cfg.ZOHO_RECIPIENT] + extra_recipients
+            all_recipients = cfg.ZOHO_RECIPIENTS + extra_recipients
             msg = MIMEMultipart("alternative")
             msg["Subject"] = subject
             msg["From"] = f"{cfg.YOUR_NAME} <{cfg.ZOHO_EMAIL}>"

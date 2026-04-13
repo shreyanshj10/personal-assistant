@@ -104,7 +104,7 @@ async def execute(decision: dict, update: Update):
         extra = memory.get_session_data("extra_recipients") or []
         try:
             await email_action.send(email_body, email_subject, extra)
-            memory.log_action(f"✅ Email sent to {config.ZOHO_RECIPIENT}" + (f" and {', '.join(extra)}" if extra else ""))
+            memory.log_action(f"✅ Email sent to {', '.join(config.ZOHO_RECIPIENTS)}" + (f" and {', '.join(extra)}" if extra else ""))
             memory.end_session()
             await update.message.reply_text("🎉 All done! EOD delivered successfully.")
         except Exception as e:
@@ -155,7 +155,7 @@ async def execute(decision: dict, update: Update):
             extras = memory.get_session_data("extra_recipients") or []
             extras.append(email)
             memory.update_session("extra_recipients", extras)
-            all_recipients = [config.ZOHO_RECIPIENT] + extras
+            all_recipients = config.ZOHO_RECIPIENTS + extras
             await update.message.reply_text(f"✅ Added! Email will go to: {', '.join(all_recipients)}")
             # Re-ask current step question
             step = memory.get_session_data("step")

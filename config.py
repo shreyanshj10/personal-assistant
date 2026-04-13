@@ -10,7 +10,9 @@ class Config:
     SLACK_CHANNEL_ID = os.getenv("SLACK_CHANNEL_ID")
     ZOHO_EMAIL = os.getenv("ZOHO_EMAIL")
     ZOHO_PASSWORD = os.getenv("ZOHO_PASSWORD")
-    ZOHO_RECIPIENT = os.getenv("ZOHO_RECIPIENT")
+    ZOHO_RECIPIENT_RAW = os.getenv("ZOHO_RECIPIENT", "")
+    ZOHO_RECIPIENTS = [r.strip() for r in ZOHO_RECIPIENT_RAW.split(",") if r.strip()]
+    ZOHO_RECIPIENT = ZOHO_RECIPIENT_RAW  # kept for validation
     YOUR_NAME = os.getenv("YOUR_NAME", "Shreyansh Jain")
     SLACK_USER_ID = os.getenv("SLACK_USER_ID", "U0AL5KAJGD6")
 
