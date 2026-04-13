@@ -140,7 +140,7 @@ async def execute(decision: dict, update: Update):
             scheduled_dt = datetime.fromtimestamp(unix_ts, tz=ist)
             time_formatted = scheduled_dt.strftime('%I:%M %p')
 
-            bot_ref = update.message.bot
+            bot_ref = update.message.get_bot()
             chat_id = update.message.chat_id
             loop = asyncio.get_event_loop()
 
