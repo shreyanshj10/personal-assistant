@@ -24,3 +24,5 @@ services:
         sync: false
       - key: YOUR_NAME
         sync: false
+      - key: SLACK_USER_ID
+        sync: false

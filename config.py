@@ -12,6 +12,7 @@ class Config:
     ZOHO_PASSWORD = os.getenv("ZOHO_PASSWORD")
     ZOHO_RECIPIENT = os.getenv("ZOHO_RECIPIENT")
     YOUR_NAME = os.getenv("YOUR_NAME", "Shreyansh Jain")
+    SLACK_USER_ID = os.getenv("SLACK_USER_ID", "U0AL5KAJGD6")
 
     def validate(self):
         required = ["TELEGRAM_BOT_TOKEN", "ALLOWED_USER_ID", "ANTHROPIC_API_KEY",

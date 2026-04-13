@@ -10,6 +10,8 @@ from config import config
 from memory import memory
 import brain
 import executor
+from services.slack_monitor import slack_monitor
+from services.mention_handler import mention_handler
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -60,6 +62,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not text:
         return
 
+    # Handle mention acknowledgement
+    if text.lower().startswith("ack "):
+        mention_id = text[4:].strip()
+        success = await mention_handler.acknowledge(mention_id)
+        if success:
+            await update.message.reply_text("\u2705 Acknowledged on Slack!")
+        else:
+            await update.message.reply_text("\u274c Mention not found or already handled.")
+        return
+
+    # Handle mention ignore
+    if text.lower().startswith("ignore "):
+        mention_id = text[7:].strip()
+        mention_handler.ignore(mention_id)
+        await update.message.reply_text("\U0001f44d Ignored.")
+        return
+
     # Add to conversation history
     memory.add_message("user", text)
 
@@ -98,10 +117,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if decision.get("jarvis_response"):
         memory.add_message("assistant", decision["jarvis_response"])
 
+async def poll_slack(app):
+    """Background task — polls Slack for mentions every 60 seconds."""
+    mention_handler.set_bot(app.bot)
+    while True:
+        try:
+            mentions = await slack_monitor.get_mentions()
+            for m in mentions:
+                await mention_handler.notify(m)
+        except Exception as e:
+            print(f"Slack poll error: {e}")
+        await asyncio.sleep(60)
+
+
+async def post_init(app):
+    asyncio.create_task(poll_slack(app))
+
+
 def main():
     config.validate()
     start_health_server()
-    app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
+    app = (
+        Application.builder()
+        .token(config.TELEGRAM_BOT_TOKEN)
+        .post_init(post_init)
+        .build()
+    )
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     logger.info("Jarvis is online.")
     app.run_polling()

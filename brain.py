@@ -137,6 +137,49 @@ For slack_time and email_time intents:
         }
 
 
+async def analyze_mention(text: str, from_user: str, channel: str) -> dict:
+    """Analyze a Slack mention — is it a task, question, FYI, or urgent?"""
+    import json as json_lib
+    soul = get_soul(config)
+
+    prompt = f"""
+Someone mentioned Shreyansh in Slack.
+From: {from_user}
+Channel: #{channel}
+Message: {text}
+
+Analyze and return ONLY valid JSON, no markdown:
+{{
+    "type": "task | question | fyi | urgent",
+    "summary": "one short sentence describing what this mention is about",
+    "suggested_reply": "a short natural professional reply to post back on Slack (max 10 words)"
+}}
+
+Type rules:
+- urgent: contains urgent, ASAP, immediately, critical, blocker
+- task: asking Shreyansh to do something
+- question: asking Shreyansh something
+- fyi: informing Shreyansh of something
+"""
+
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=200,
+        system=soul,
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    raw = response.content[0].text.strip().replace("```json", "").replace("```", "").strip()
+    try:
+        return json_lib.loads(raw)
+    except:
+        return {
+            "type": "fyi",
+            "summary": "Someone mentioned you in Slack.",
+            "suggested_reply": "Got it, thanks!"
+        }
+
+
 async def format_eod(raw_update: str) -> dict:
     """Format raw EOD into Slack + Email. Returns dict with slack, email, email_subject."""
     from datetime import datetime
