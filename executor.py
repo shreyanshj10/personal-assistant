@@ -1,3 +1,4 @@
+import asyncio
 from telegram import Update
 from memory import memory
 from actions.eod_action import eod_action
@@ -102,6 +103,10 @@ async def execute(decision: dict, update: Update):
         email_body = memory.get_session_data("email")
         email_subject = memory.get_session_data("email_subject")
         extra = memory.get_session_data("extra_recipients") or []
+        if not email_body or not email_subject:
+            await update.message.reply_text("❌ Email content lost (session was overwritten). Please re-send your EOD.")
+            memory.end_session()
+            return
         try:
             await email_action.send(email_body, email_subject, extra)
             memory.log_action(f"✅ Email sent to {', '.join(config.ZOHO_RECIPIENTS)}" + (f" and {', '.join(extra)}" if extra else ""))
@@ -120,6 +125,11 @@ async def execute(decision: dict, update: Update):
         email_subject = memory.get_session_data("email_subject")
         extra = memory.get_session_data("extra_recipients") or []
 
+        if not email_body or not email_subject:
+            await update.message.reply_text("❌ Email content lost (session was overwritten). Please re-send your EOD.")
+            memory.end_session()
+            return
+
         try:
             from utils.scheduler import parse_time_to_unix
             unix_ts = parse_time_to_unix(time_str)
@@ -130,11 +140,29 @@ async def execute(decision: dict, update: Update):
             scheduled_dt = datetime.fromtimestamp(unix_ts, tz=ist)
             time_formatted = scheduled_dt.strftime('%I:%M %p')
 
+            bot_ref = update.message.bot
+            chat_id = update.message.chat_id
+            loop = asyncio.get_event_loop()
+
+            def on_email_sent():
+                asyncio.run_coroutine_threadsafe(
+                    bot_ref.send_message(chat_id, "✅ Scheduled email sent successfully!"),
+                    loop,
+                )
+
+            def on_email_failed(error):
+                asyncio.run_coroutine_threadsafe(
+                    bot_ref.send_message(chat_id, f"❌ Scheduled email failed: {error}"),
+                    loop,
+                )
+
             email_service.schedule_email(
                 body=email_body,
                 subject=email_subject,
                 unix_timestamp=unix_ts,
-                extra_recipients=extra
+                extra_recipients=extra,
+                notify_callback=on_email_sent,
+                error_callback=on_email_failed,
             )
 
             memory.log_action(f"✅ Email scheduled for {time_formatted} IST")
