@@ -4,6 +4,7 @@ from actions.eod_action import eod_action
 from actions.slack_action import slack_action
 from actions.email_action import email_action
 from services.email_service import email_service
+from services.mention_handler import mention_handler
 from config import config
 import brain
 
@@ -159,6 +160,36 @@ async def execute(decision: dict, update: Update):
             # Re-ask current step question
             step = memory.get_session_data("step")
             await _reask_current_step(update, step)
+
+    elif action == "send_ack":
+        reply_text = memory.get_session_data("reply_text")
+        channel_id = memory.get_session_data("channel_id")
+        thread_ts = memory.get_session_data("thread_ts")
+        mention_num = memory.get_session_data("mention_num")
+
+        success = await mention_handler.send_ack(channel_id, thread_ts, reply_text)
+        if success:
+            mention_handler.remove_mention(mention_num)
+            memory.end_session()
+            await update.message.reply_text("\u2705 Sent!")
+        else:
+            await update.message.reply_text("\u274c Failed to send. Try again.")
+
+    elif action == "update_ack_reply":
+        current_reply = memory.get_session_data("reply_text")
+        instruction = action_data.get("instruction", "")
+        username = memory.get_session_data("username") or "them"
+
+        await update.message.chat.send_action("typing")
+        new_reply = await brain.update_ack_reply(current_reply, instruction)
+        memory.update_session("reply_text", new_reply)
+
+        await update.message.reply_text(
+            f"\U0001f4dd Updated reply to {username}:\n\n"
+            f"\"{new_reply}\"\n\n"
+            f"Reply *yes* to send, or tell me what to change.",
+            parse_mode="Markdown"
+        )
 
     elif action == "cancel_session":
         memory.end_session()

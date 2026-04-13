@@ -29,9 +29,9 @@ The user sent: "{user_message}"
 Based on everything above, decide what to do. Return ONLY a valid JSON object:
 
 {{
-    "intent": "one of: new_eod | edit_eod | confirm_yes | confirm_no | slack_now | slack_schedule | slack_time | email_now | email_schedule | email_time | email_skip | add_recipient | general_chat | cancel",
+    "intent": "one of: new_eod | edit_eod | confirm_yes | confirm_no | slack_now | slack_schedule | slack_time | email_now | email_schedule | email_time | email_skip | add_recipient | edit_ack | general_chat | cancel",
     "jarvis_response": "what Jarvis says back to the user — conversational, in character",
-    "action": "one of: format_eod | confirm_yes | send_slack_now | schedule_slack | send_email_now | email_schedule | email_time | skip_email | add_recipient | reply_only | cancel_session",
+    "action": "one of: format_eod | confirm_yes | send_slack_now | schedule_slack | send_email_now | email_schedule | email_time | skip_email | add_recipient | send_ack | update_ack_reply | reply_only | cancel_session",
     "action_data": {{}}
 }}
 
@@ -57,6 +57,8 @@ Based on everything above, decide what to do. Return ONLY a valid JSON object:
 - For schedule_slack: {{"time_str": "the time user mentioned"}}
 - For email_time: {{"time_str": "the time user mentioned"}}
 - For add_recipient: {{"email": "extracted email address"}}
+- For send_ack: {{}} (executor handles sending)
+- For update_ack_reply: {{"instruction": "what user wants to change"}}
 - For reply_only: {{}} (just respond conversationally)
 - For cancel_session: {{}}
 
@@ -77,13 +79,16 @@ If current session step is "awaiting_slack_time" OR "awaiting_email_time":
 - If step is "awaiting_email_choice" and user says 2/schedule/later → intent "email_schedule", action "email_schedule"
 - If step is "awaiting_email_choice" and user says 3/skip/no → intent "email_skip", action "skip_email"
 - If step is "awaiting_email_time" and user provides a time → intent "email_time", action "email_time"
+- If step is "awaiting_ack_confirmation" and user says yes/y/sure/ok/send → intent "confirm_yes", action "send_ack"
+- If step is "awaiting_ack_confirmation" and user says anything else → intent "edit_ack", action "update_ack_reply", action_data.instruction = what user said
 - These rules OVERRIDE everything else when a session is active. NEVER skip steps.
 
 ## CRITICAL: jarvis_response Rules
 Set jarvis_response to EMPTY STRING "" for these intents (executor handles ALL messaging):
 - new_eod (executor shows formatted preview)
 - edit_eod (executor shows updated preview)
-- confirm_yes (executor asks slack choice)
+- confirm_yes (executor asks slack choice or sends ack)
+- edit_ack (executor shows updated reply)
 - slack_now (executor sends slack + asks email)
 - slack_schedule (executor asks for time)
 - slack_time (executor handles scheduling)
@@ -178,6 +183,25 @@ Type rules:
             "summary": "Someone mentioned you in Slack.",
             "suggested_reply": "Got it, thanks!"
         }
+
+
+async def update_ack_reply(current_reply: str, instruction: str) -> str:
+    """Update an ack reply based on user instruction."""
+    soul = get_soul(config)
+    prompt = f"""
+Current reply: "{current_reply}"
+User wants to change it to: "{instruction}"
+
+Return ONLY the new reply text, nothing else. Keep it short and professional.
+If user said something like "just say On it!" return exactly: On it!
+"""
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=100,
+        system=soul,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response.content[0].text.strip().strip('"')
 
 
 async def format_eod(raw_update: str) -> dict:

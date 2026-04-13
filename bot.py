@@ -62,20 +62,47 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not text:
         return
 
-    # Handle mention acknowledgement
-    if text.lower().startswith("ack "):
-        mention_id = text[4:].strip()
-        success = await mention_handler.acknowledge(mention_id)
-        if success:
-            await update.message.reply_text("\u2705 Acknowledged on Slack!")
-        else:
-            await update.message.reply_text("\u274c Mention not found or already handled.")
-        return
+    # Smart ack handling — natural language or "ack N"
+    if any(word in text.lower() for word in ['acknowledge', 'ack', 'reply']):
+        # Determine which mention number
+        mention_num = None
+        if text.lower().startswith("ack "):
+            mention_num = text[4:].strip()
+        elif len(mention_handler.pending_mentions) == 1:
+            mention_num = list(mention_handler.pending_mentions.keys())[0]
+        elif len(mention_handler.pending_mentions) > 1:
+            await update.message.reply_text(
+                f"You have {len(mention_handler.pending_mentions)} pending mentions. Which one?\n" +
+                "\n".join([f"ack {k}" for k in mention_handler.pending_mentions.keys()])
+            )
+            return
+
+        if mention_num:
+            data = mention_handler.get_mention_data(mention_num)
+            if not data:
+                await update.message.reply_text("\u274c Mention not found or already handled.")
+                return
+            # Start ack confirmation session
+            memory.start_session("ack_confirmation", {
+                "mention_num": mention_num,
+                "reply_text": data["reply_text"],
+                "channel_id": data["channel_id"],
+                "thread_ts": data["thread_ts"],
+                "username": data["username"],
+                "step": "awaiting_ack_confirmation"
+            })
+            await update.message.reply_text(
+                f"\U0001f4dd Here's what I'll send to {data['username']}:\n\n"
+                f"\"{data['reply_text']}\"\n\n"
+                f"Reply *yes* to send, or tell me what to change.",
+                parse_mode="Markdown"
+            )
+            return
 
     # Handle mention ignore
     if text.lower().startswith("ignore "):
-        mention_id = text[7:].strip()
-        mention_handler.ignore(mention_id)
+        mention_num = text[7:].strip()
+        mention_handler.ignore(mention_num)
         await update.message.reply_text("\U0001f44d Ignored.")
         return
 
