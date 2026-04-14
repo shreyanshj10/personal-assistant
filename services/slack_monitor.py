@@ -1,6 +1,9 @@
 import time
+import logging
 import httpx
 from config import config
+
+logger = logging.getLogger(__name__)
 
 class SlackMonitor:
     def __init__(self):
@@ -26,7 +29,7 @@ class SlackMonitor:
                 data = response.json()
 
                 if not data.get("ok"):
-                    print(f"Slack search error: {data.get('error')}")
+                    logger.error(f"Slack search error: {data.get('error')}")
                     return []
 
                 messages = data.get("messages", {}).get("matches", [])
@@ -74,7 +77,7 @@ class SlackMonitor:
                 return new_mentions
 
         except Exception as e:
-            print(f"Slack monitor error: {e}")
+            logger.error(f"Slack monitor error: {e}")
             return []
 
     async def resolve_channel_name(self, channel_id: str) -> str:

@@ -1,15 +1,32 @@
+import asyncio
+import logging
 import smtplib
 import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from config import config
 
+logger = logging.getLogger(__name__)
+
 class EmailService:
     def __init__(self):
         self._scheduled_timers = []
 
-    async def send_email(self, body: str, subject: str, extra_recipients: list = []):
-        """Send email via Zoho SMTP with fallback methods."""
+    async def send_email(self, body: str, subject: str, extra_recipients: list = [], max_retries: int = 3):
+        """Send email with retry and exponential backoff."""
+        for attempt in range(max_retries):
+            try:
+                await self._send(body, subject, extra_recipients)
+                return True
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    raise
+                wait = 2 ** attempt
+                logger.warning(f"Email attempt {attempt + 1} failed: {e}. Retrying in {wait}s...")
+                await asyncio.sleep(wait)
+
+    async def _send(self, body: str, subject: str, extra_recipients: list):
+        """Actual email send logic via Zoho SMTP."""
         all_recipients = config.ZOHO_RECIPIENTS + extra_recipients
 
         msg = MIMEMultipart("alternative")
@@ -33,10 +50,10 @@ class EmailService:
             with smtplib.SMTP_SSL("smtp.zoho.in", 465, context=context, timeout=30) as server:
                 server.login(config.ZOHO_EMAIL, config.ZOHO_PASSWORD)
                 server.sendmail(config.ZOHO_EMAIL, all_recipients, msg.as_string())
-                return True
+                return
         except Exception as e:
             last_error = e
-            print(f"SSL method failed: {e}")
+            logger.warning(f"SSL method failed: {e}")
 
         # Method 2: TLS on port 587
         try:
@@ -47,15 +64,15 @@ class EmailService:
                 server.ehlo()
                 server.login(config.ZOHO_EMAIL, config.ZOHO_PASSWORD)
                 server.sendmail(config.ZOHO_EMAIL, all_recipients, msg.as_string())
-                return True
+                return
         except Exception as e:
             last_error = e
-            print(f"TLS method failed: {e}")
+            logger.warning(f"TLS method failed: {e}")
 
         # Both failed
         raise Exception(f"Email failed with both SSL and TLS: {last_error}")
 
-    def schedule_email(self, body: str, subject: str, unix_timestamp: int, extra_recipients: list = []):
+    def schedule_email(self, body: str, subject: str, unix_timestamp: int, extra_recipients: list = [], notify_callback=None, error_callback=None):
         """Schedule email using threading.Timer."""
         import threading
         import pytz
@@ -69,15 +86,18 @@ class EmailService:
             raise ValueError("Scheduled time is in the past")
 
         def send_sync():
-            import asyncio
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
                 loop.run_until_complete(
                     self.send_email(body, subject, extra_recipients)
                 )
+                if notify_callback:
+                    notify_callback()
             except Exception as e:
-                print(f"Scheduled email failed: {e}")
+                logger.error(f"Scheduled email failed: {e}")
+                if error_callback:
+                    error_callback(str(e))
             finally:
                 loop.close()
 

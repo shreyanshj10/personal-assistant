@@ -1,7 +1,18 @@
 import re
 import asyncio
+import logging
 import httpx
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from config import config
+
+logger = logging.getLogger(__name__)
+
+
+def _mention_keyboard(mention_num):
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("💬 Acknowledge", callback_data=f"mention_ack_{mention_num}"),
+        InlineKeyboardButton("👋 Ignore", callback_data=f"mention_ignore_{mention_num}"),
+    ]])
 
 class MentionHandler:
     def __init__(self):
@@ -49,15 +60,14 @@ class MentionHandler:
         message = (
             f"{type_emoji} *{username}* mentioned you in *#{channel}*\n\n"
             f"_{clean}_\n\n"
-            f"\U0001f916 {analysis.get('summary', 'Someone mentioned you.')}\n\n"
-            f"Reply *ack {mention_num}* to acknowledge on Slack\n"
-            f"or *ignore {mention_num}* to dismiss"
+            f"\U0001f916 {analysis.get('summary', 'Someone mentioned you.')}"
         )
 
         await self.bot.send_message(
             chat_id=config.ALLOWED_USER_ID,
             text=message,
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            reply_markup=_mention_keyboard(mention_num)
         )
 
     def get_mention_data(self, mention_id: str) -> dict:

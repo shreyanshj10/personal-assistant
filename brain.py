@@ -1,8 +1,11 @@
+import logging
 import anthropic
 import json
 from soul import get_soul
 from config import config
 from memory import memory
+
+logger = logging.getLogger(__name__)
 
 client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
 
