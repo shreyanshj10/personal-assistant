@@ -1,40 +1,18 @@
 import time
-import logging
 import httpx
 from config import config
 
-logger = logging.getLogger(__name__)
-
 class SlackMonitor:
-    SEARCH_BUFFER = 300  # 5 min buffer for Slack search indexing delay
-
     def __init__(self):
-        self.last_checked = int(time.time()) - self.SEARCH_BUFFER
-        self.processed_ids = set()
-
-    async def resolve_channel_name(self, channel_id: str) -> str:
-        if not channel_id:
-            return "unknown"
-        if channel_id.startswith("D"):
-            return "DM"
-        if channel_id.startswith("U"):
-            return "DM"
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    "https://slack.com/api/conversations.info",
-                    headers={"Authorization": f"Bearer {config.SLACK_USER_TOKEN}"},
-                    params={"channel": channel_id}
-                )
-                data = response.json()
-                return data.get("channel", {}).get("name", channel_id)
-        except:
-            return channel_id
+        # Set last_checked to current time on startup
+        # This means we only get NEW mentions after bot starts
+        self.last_checked = time.time()
+        self.processed_keys = set()  # "channel_id:ts" keys
 
     async def get_mentions(self) -> list:
         """Search Slack for new messages mentioning the user since last check."""
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(
                     "https://slack.com/api/search.messages",
                     headers={"Authorization": f"Bearer {config.SLACK_USER_TOKEN}"},
@@ -42,7 +20,7 @@ class SlackMonitor:
                         "query": f"<@{config.SLACK_USER_ID}>",
                         "sort": "timestamp",
                         "sort_dir": "desc",
-                        "count": 10
+                        "count": 20
                     }
                 )
                 data = response.json()
@@ -52,21 +30,27 @@ class SlackMonitor:
                     return []
 
                 messages = data.get("messages", {}).get("matches", [])
-                total = data.get("messages", {}).get("total", 0)
-                logger.info(f"Slack search: {total} total results, {len(messages)} matches returned, last_checked={self.last_checked}")
                 new_mentions = []
+                current_time = time.time()
 
                 for msg in messages:
                     msg_ts = float(msg.get("ts", 0))
-                    msg_id = msg.get("iid", msg.get("ts", ""))
-                    logger.info(f"  msg ts={msg_ts}, last_checked={self.last_checked}, new={msg_ts > self.last_checked}, id={msg_id}, processed={msg_id in self.processed_ids}")
+                    channel_id = msg.get("channel", {}).get("id", "")
 
-                    if msg_ts > self.last_checked and msg_id not in self.processed_ids:
+                    # Create unique key from channel + timestamp
+                    unique_key = f"{channel_id}:{msg_ts}"
+
+                    # Only process if:
+                    # 1. Message is newer than when bot started
+                    # 2. Message hasn't been processed before
+                    # 3. Message is newer than last check
+                    if (msg_ts > self.last_checked and
+                        unique_key not in self.processed_keys):
+
                         channel_info = msg.get("channel", {})
                         channel_name = channel_info.get("name", "")
-                        channel_id = channel_info.get("id", "")
 
-                        # If name is empty or looks like a user ID, resolve it
+                        # Resolve channel name if it looks wrong
                         if not channel_name or channel_name.startswith("U"):
                             channel_name = await self.resolve_channel_name(channel_id)
 
@@ -76,20 +60,38 @@ class SlackMonitor:
                             "channel_name": channel_name,
                             "channel_id": channel_id,
                             "ts": msg_ts,
-                            "id": msg_id
+                            "unique_key": unique_key
                         })
-                        self.processed_ids.add(msg_id)
+                        self.processed_keys.add(unique_key)
 
-                self.last_checked = int(time.time()) - self.SEARCH_BUFFER
+                # Update last_checked to NOW after processing
+                self.last_checked = current_time
 
                 # Prevent set from growing too large
-                if len(self.processed_ids) > 500:
-                    self.processed_ids = set(list(self.processed_ids)[-250:])
+                if len(self.processed_keys) > 1000:
+                    self.processed_keys = set(list(self.processed_keys)[-500:])
 
                 return new_mentions
 
         except Exception as e:
             print(f"Slack monitor error: {e}")
             return []
+
+    async def resolve_channel_name(self, channel_id: str) -> str:
+        if not channel_id:
+            return "unknown"
+        if channel_id.startswith("D") or channel_id.startswith("U"):
+            return "DM"
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(
+                    "https://slack.com/api/conversations.info",
+                    headers={"Authorization": f"Bearer {config.SLACK_USER_TOKEN}"},
+                    params={"channel": channel_id}
+                )
+                data = response.json()
+                return data.get("channel", {}).get("name", channel_id)
+        except:
+            return channel_id
 
 slack_monitor = SlackMonitor()
